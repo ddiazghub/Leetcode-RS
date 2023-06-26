@@ -29,13 +29,6 @@ pub fn total_cost(costs: Vec<i32>, k: i32, candidates: i32) -> i64 {
     let candidates = candidates.min(half);
     let mut k = k;
 
-    if n == k && candidates == half {
-        return costs
-            .into_iter()
-            .map(i64::from)
-            .sum()
-    }
-
     let mut low: BinaryHeap<_> = costs
         .iter()
         .take(candidates as usize)
