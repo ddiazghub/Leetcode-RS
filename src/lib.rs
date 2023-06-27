@@ -1,5 +1,6 @@
 mod two_pointers;
 mod dynamic_programming;
+mod search;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right
