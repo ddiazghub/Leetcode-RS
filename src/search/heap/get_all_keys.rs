@@ -109,25 +109,28 @@ fn a_star(grid: &Grid, src: usize, dst: usize) -> Option<(u32, Vec<usize>)> {
 
         let steps = state.steps + 1;
         
-        let keys = if let Cell::Lock(id) = grid.grid[state.cell.0][state.cell.1] {
-            let mut keys = state.keys.into_owned();
-            keys.push(id as usize);
-            Cow::Owned(keys)
-        } else {
-            state.keys
-        };
-
+        /*
         for cell in next {
             if cell.0 < grid.grid.len() &&
                 cell.1 < grid.grid[0].len() &&
                 !explored.contains(&cell) &&
                 grid.grid[cell.0][cell.1] != Cell::Wall
             {
+                let keys = if let Cell::Lock(id) = grid.grid[state.cell.0][state.cell.1] {
+                    let mut keys = state.keys.into_owned();
+                    keys.push(id as usize);
+                    Cow::Owned(keys)
+                } else {
+                    state.keys
+                };
+
+
                 explored.insert(cell);
                 let new_state = AStarState::new(cell, keys, steps, steps + manhattan(cell, end));
                 heap.push(new_state);
             }
         }
+        */
     }
 
     None
@@ -166,33 +169,11 @@ fn get_distances(grid: &Grid) -> Vec<Vec<usize>> {
 /// Return the lowest number of moves to acquire all keys. If it is impossible, return -1.
 pub fn shortest_path_all_keys(grid: Vec<String>)/* Strings can't be indexed in Rust, really Leetcode? */ -> i32 {
     let grid = parse_grid(grid);
+
+    0
 }
 
 #[cfg(test)]
 mod tests {
     use super::shortest_path_all_keys;
-
-    #[test]
-    fn test1() {
-        let edges = vec![vec![0, 1], vec![1, 2], vec![0, 2]];
-        let succ_prob = vec![0.5,0.5,0.2];
-        let result = max_probability(3, edges, succ_prob, 0, 2);
-        assert_eq!(result, 0.25);
-    }
-
-    #[test]
-    fn test2() {
-        let edges = vec![vec![0,1],vec![1,2],vec![0,2]];
-        let succ_prob = vec![0.5,0.5,0.3];
-        let result = max_probability(3, edges, succ_prob, 0, 2);
-        assert_eq!(result, 0.3);
-    }
-
-    #[test]
-    fn test3() {
-        let edges = vec![vec![0,1]];
-        let succ_prob = vec![0.5];
-        let result = max_probability(3, edges, succ_prob, 0, 2);
-        assert_eq!(result, 0.0);
-    }
 }
