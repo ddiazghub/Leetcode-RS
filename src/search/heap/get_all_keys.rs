@@ -1,6 +1,6 @@
-use std::{collections::{HashSet, BinaryHeap}, cmp::Ordering};
+use std::{collections::{HashSet, BinaryHeap, HashMap}, cmp::Ordering, ops::{Add, Index}, fmt::Display};
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 enum Cell {
     Empty,
     Wall,
@@ -9,22 +9,82 @@ enum Cell {
     Lock(u8)
 }
 
+type EstimateTree = HashMap<Point, EstimateNode>;
+
+#[derive(Debug)]
+struct EstimateNode {
+    total_estimate: u8,
+    estimate: u8,
+    next: EstimateTree
+}
+
+impl EstimateNode {
+    pub fn new(estimate: u8, total_estimate: u8, next: EstimateTree) -> Self {
+        Self {
+            total_estimate,
+            estimate,
+            next
+        }
+    }
+
+    pub fn tree(start: Point, keys: &Vec<Point>) -> EstimateTree {
+        let mut tree = HashMap::new();
+        let mut explored = [false; 6];
+
+        for i in 0..keys.len() {
+            explored[i] = true;
+            let key = keys[i];
+            let estimate = key.manhattan(start);
+            let (total_estimate, subtree) = Self::tree_recurse(i, keys, &mut explored);
+            let node = EstimateNode::new(estimate, total_estimate + estimate, subtree);
+            explored[i] = false;
+            tree.insert(key, node);
+        }
+
+        tree
+    }
+
+    fn tree_recurse(current: usize, keys: &Vec<Point>, explored: &mut [bool; 6]) -> (u8, EstimateTree) {
+        let mut tree = HashMap::new();
+        let key = keys[current];
+        let mut cost_estimate = u8::MAX;
+
+        for i in 0..keys.len() {
+            if !explored[i] {
+                explored[i] = true;
+                let next = keys[i];
+                let estimate = key.manhattan(next);
+                let (total_estimate, subtree) = Self::tree_recurse(i, keys, explored);
+                let node = EstimateNode::new(estimate, total_estimate + estimate, subtree);
+                cost_estimate = cost_estimate.min(node.total_estimate);
+                explored[i] = false;
+                tree.insert(next, node);
+            }
+        }
+
+        if cost_estimate == u8::MAX {
+            cost_estimate = 0;
+        }
+
+        (cost_estimate, tree)
+    }
+}
+
 #[derive(Debug)]
 struct Grid {
     grid: Vec<Vec<Cell>>,
-    keys: Vec<(u8, u8)>,
-    start: (u8, u8)
+    keys: Vec<Point>,
+    start: Point,
+    estimates: EstimateTree
 }
 
 impl Grid {
-    pub fn new(grid: Vec<String>) -> Self {
-        let mut new_grid = Grid {
-            grid: Vec::new(),
-            keys: Vec::new(),
-            start: (0, 0)
-        };
+    pub fn new(old_grid: Vec<String>) -> Self {
+        let mut grid: Vec<Vec<Cell>> = Vec::new();
+        let mut keys: Vec<Point> = Vec::new();
+        let mut start = Point::default();
 
-        for (i, row) in grid.into_iter().enumerate() {
+        for (i, row) in old_grid.into_iter().enumerate() {
             let mut new_row = Vec::new();
 
             for (j, cell) in row.chars().enumerate() {
@@ -33,16 +93,16 @@ impl Grid {
                     '#' => new_row.push(Cell::Wall),
                     '@' => {
                         new_row.push(Cell::Start);
-                        new_grid.start = (i as u8, j as u8);
+                        start = Point(i as u8, j as u8);
                     },
                     'a'..='z' => {
                         let key_id = cell as u8 - b'a';
 
-                        if key_id >= new_grid.keys.len() as u8 {
-                            new_grid.keys.resize(key_id as usize + 1, (0, 0))
+                        if key_id >= keys.len() as u8 {
+                            keys.resize(key_id as usize + 1, Point::default())
                         }
 
-                        new_grid.keys[key_id as usize] = (i as u8, j as u8);
+                        keys[key_id as usize] = Point(i as u8, j as u8);
                         let new_cell = Cell::Key(key_id);
                         new_row.push(new_cell);
                     },
@@ -54,213 +114,203 @@ impl Grid {
                 }
             }
 
-            new_grid.grid.push(new_row);
+            grid.push(new_row);
         }
 
-        new_grid
-    }
-}
-
-#[derive(PartialEq, Eq)]
-struct GridState {
-    mask: u16,
-    steps: u8,
-    cost: u8,
-    depends_on: Option<u8>
-}
-
-impl GridState {
-    pub fn new(row: u8, col: u8, keys: u8, steps: u8, cost: u8, depends_on: Option<u8>) -> Self {
-        let mask = ((row as u16) << 11) + ((col as u16) << 6) + keys as u16;
+        let estimates = EstimateNode::tree(start, &keys);
 
         Self {
-            mask,
-            steps,
-            cost,
-            depends_on
+            grid,
+            keys,
+            start,
+            estimates
         }
     }
 
-    pub fn row(&self) -> u8 {
-        ((0xF800 & self.mask) >> 11) as u8
+    pub fn rows(&self) -> u8 {
+        self.grid.len() as u8
     }
 
-    pub fn col(&self) -> u8 {
-        ((0x7C0 & self.mask) >> 6) as u8
+    pub fn cols(&self) -> u8 {
+        self.grid[0].len() as u8
     }
 
-    pub fn cell(&self) -> (u8, u8) {
-        (self.row(), self.col())
+    pub fn key_count(&self) -> u8 {
+        self.keys.len() as u8
+    }
+}
+
+impl Index<Point> for Grid {
+    type Output = Cell;
+
+    fn index(&self, index: Point) -> &Self::Output {
+        &self.grid[index.0 as usize][index.1 as usize]
+    }
+}
+
+#[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Clone, Copy, Default)]
+struct Point(u8, u8);
+
+impl Point {
+    const MOVE_DIRECTIONS: [(i8, i8); 4] = [
+        (1, 0),
+        (-1, 0),
+        (0, 1),
+        (0, -1)
+    ];
+
+    pub fn manhattan(self, other: Point) -> u8 {
+        ((self.0 as i32 - other.0 as i32).abs() + (self.1 as i32 - other.1 as i32).abs()) as u8
     }
 
-    pub fn keys(&self) -> u8 {
-        (0x3F & self.mask) as u8
+    pub fn expand(self) -> impl Iterator<Item = Self> {
+        Self::MOVE_DIRECTIONS
+            .into_iter()
+            .filter_map(move |direction| self + direction)
+    }
+}
+
+impl Add<(i8, i8)> for Point {
+    type Output = Option<Self>;
+
+    fn add(self, rhs: (i8, i8)) -> Self::Output {
+        let x = self.0 as i8 + rhs.0;
+        let y = self.1 as i8 + rhs.1;
+
+        (x > -1 && y > -1)
+            .then_some(Point(x as u8, y as u8))
+    }
+}
+
+struct State<'a> {
+    cell: Point,
+    src: Point,
+    dst: Point,
+    keys: u8,
+    cost: u8,
+    estimate: &'a EstimateNode,
+    steps: u8
+}
+
+impl <'a> State<'a> {
+    pub fn new(cell: Point, src: Point, dst: Point, keys: u8, steps: u8, estimate: &'a EstimateNode) -> Self {
+        Self {
+            cell,
+           src,
+            dst,
+            keys,
+            steps,
+            estimate,
+            cost: steps + ((estimate.total_estimate - estimate.estimate) + cell.manhattan(dst))
+        }
     }
 
     pub fn has_key(&self, key_id: u8) -> bool {
-        ((1 << key_id) & self.mask) > 0
+        ((1 << key_id) & self.keys) > 0
     }
 
-    pub fn expand(self, end: (u8, u8), grid: &Grid, exclude: &HashSet<(u8, u8)>) -> Vec<Self> {
-        let cell = self.cell();
-        let mut keys = self.keys();
+    pub fn expand<'b>(self, grid: &'b Grid, exclude: &'b HashSet<Point>) -> Vec<Self> {
+        let cell = self.cell;
         let steps = self.steps + 1;
 
-        if let Cell::Lock(id) = grid.grid[cell.0 as usize][cell.1 as usize] {
-            keys |= 1 << id;
-        }
-
-        let next = [
-            (cell.0 as i8 + 1, cell.1 as i8),
-            (cell.0 as i8 - 1, cell.1 as i8),
-            (cell.0 as i8, cell.1 as i8 + 1),
-            (cell.0 as i8, cell.1 as i8 - 1),
-        ];
-
-        next
-            .into_iter()
-            .filter_map(|(row, col)| {
+        cell.expand()
+            .filter_map(move |cell| {
                 match true {
-                    _ if (0..grid.grid.len() as i8).contains(&row) && (0..grid.grid[0].len() as i8).contains(&col) => {
-                        let cell = (row as u8, col as u8);
-
-                        if exclude.contains(&cell) || grid.grid[row as usize][col as usize] == Cell::Wall {
-                            None
-                        } else {
-                            let cost = steps + manhattan(cell, end);
-                            Some(GridState::new(cell.0, cell.1, keys, steps, cost, self.depends_on))
+                    _ if cell.0 < grid.rows() as u8 && cell.1 < grid.cols() as u8 => {
+                        match grid[cell] {
+                            Cell::Wall => None,
+                            _ if exclude.contains(&cell) => None,
+                            Cell::Lock(key) if !self.has_key(key) => None,
+                            _ => Some(State::new(cell, self.src, self.dst, self.keys, steps, self.estimate))
                         }
                     },
                     _ => None
                 }
             }).collect()
     }
-}
-
-impl PartialOrd for GridState {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        other.cost.partial_cmp(&self.cost)
-    }
-}
-
-impl Ord for GridState {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other.cost.cmp(&self.cost)
-    }
-}
-
-#[derive(Debug)]
-struct Graph {
-    edges: Vec<Vec<Edge>>,
-    start_edges: Vec<Edge>
-}
-
-#[derive(Clone, Copy, Debug)]
-enum Edge {
-    Indirect(u8),
-    Direct {
-        cost: u8,
-        keys: u8
-    }
-}
-
-#[derive(PartialEq, Eq)]
-struct GraphState {
-    current: u8,
-    cost: u8,
-    keys: u8
-}
-
-impl GraphState {
-    pub fn new(current: u8, cost: u8, keys: u8) -> Self {
-        Self {
-            current,
-            cost,
-            keys
-        }
-    }
 
     pub fn key_count(&self) -> u8 {
-        (0_u8..6_u8)
-            .filter(|&i| ((1 << i) & self.keys) > 0)
+        (0..6)
+            .map(|i| self.keys & (1 << i))
+            .filter(|&has_key| has_key > 0)
             .count() as u8
     }
 }
 
-impl PartialOrd for GraphState {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match other.cost.cmp(&self.cost) {
-            Ordering::Equal => Some(self.key_count().cmp(&other.key_count())),
-            cmp => Some(cmp)
-        }
-    } 
+impl <'a> PartialEq for State<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.cost == other.cost && self.steps == other.steps && self.estimate.total_estimate == other.estimate.total_estimate
+    }
 }
 
-impl Ord for GraphState {
+impl <'a> Eq for State<'a> {}
+
+impl <'a> PartialOrd for State<'a> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(match other.cost.cmp(&self.cost) {
+            Ordering::Equal => self.key_count().cmp(&other.key_count()),
+            cmp => cmp
+        })
+    }
+}
+
+impl <'a> Ord for State<'a> {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
+        self.partial_cmp(&other).unwrap()
     }
 }
 
-fn manhattan(point1: (u8, u8), point2: (u8, u8)) -> u8 {
-    ((point1.0 as i32 - point2.0 as i32).abs() + (point1.1 as i32 - point2.1 as i32).abs()) as u8
-}
+fn shortest_path(grid: &Grid) -> i32 {
+    let mut explored: HashMap<(Point, Point), HashSet<Point>> = HashMap::new();
+    let mut heap: BinaryHeap<State> = BinaryHeap::new();
 
-fn make_edge(grid: &Grid, src: u8, start: (u8, u8), end: (u8, u8)) -> Option<Edge> {
-    let mut explored: HashSet<(u8, u8)> = HashSet::from([start]);
-    let initial = GridState::new(start.0, start.1, 0, 0, manhattan(start, end), None);
-    let mut heap = BinaryHeap::from([initial]);
+    for i in 0..grid.key_count() as usize {
+        let src = grid.keys[i];
+        explored.insert((grid.start, src), HashSet::from([grid.start]));
+        let initial = State::new(grid.start, grid.start, src, 0, 0, &grid.estimates[&src]);
+        heap.push(initial);
 
-    while let Some(mut state) = heap.pop() {
-        let cell = state.cell();
+        for j in i + 1..grid.key_count() as usize {
+            let dst = grid.keys[j];
 
-        if end == cell {
-            return Some(match state.depends_on {
-                Some(key) => Edge::Indirect(key),
-                None => Edge::Direct {
-                    cost: state.steps,
-                    keys: state.keys()
-                }
-            })
-        }
-
-        match grid.grid[cell.0 as usize][cell.1 as usize] {
-            Cell::Key(id) if id != src => state.depends_on = state.depends_on.is_none().then(|| id),
-            _ => ()
-        };
-
-        for neighbor in state.expand(end, grid, &explored) {
-            explored.insert(neighbor.cell());
-            heap.push(neighbor);
+            explored.insert((src, dst), HashSet::from([src]));
+            explored.insert((dst, src), HashSet::from([dst]));
         }
     }
 
-    None
-}
+    while let Some(state) = heap.pop() {
+        if state.cell == state.dst {
+            let id = if let Cell::Key(id) = grid[state.cell] {
+                id
+            } else {
+                unreachable!("What?")
+            };
 
-fn make_graph(grid: &Grid) -> Option<Graph> {
-    let n_keys = grid.keys.len();
-    let mut edges = vec![vec![Edge::Direct { cost: 0, keys: 0 }; n_keys]; n_keys];
-    let mut start_edges = vec![Edge::Indirect(0); n_keys];
+            let keys = state.keys | (1 << id);
 
-    for i in 0..n_keys - 1 {
-        let start = grid.keys[i as usize];
-        start_edges[i] = make_edge(grid, 255, grid.start, start)?;
+            if keys == (1 << grid.keys.len()) - 1 {
+                return state.steps as i32;
+            }
 
-        for j in i + 1..n_keys {
-            let end = grid.keys[j as usize];
-            let edge = make_edge(grid, i as u8, start, end)?;
-            edges[i][j] = edge;
-            edges[j][i] = edge;
+            for (&dst, estimate) in state.estimate.next.iter() {
+                let next = State::new(state.dst, state.dst, dst, keys, state.steps, estimate);
+                heap.push(next);
+            }
+        } else {
+            let pair = (state.src, state.dst);
+
+            for neighbor in state.expand(grid, &explored[&pair]) {
+                explored.get_mut(&pair)
+                    .unwrap()
+                    .insert(neighbor.cell);
+
+                heap.push(neighbor);
+            }
         }
+
     }
 
-    start_edges[n_keys - 1] = make_edge(grid, 255, grid.start, grid.keys[n_keys - 1])?;
-
-    Some(Graph {
-        edges,
-        start_edges
-    })
+    -1
 }
 
 /// You are given an m x n grid grid where:
@@ -279,42 +329,9 @@ fn make_graph(grid: &Grid) -> Option<Graph> {
 /// Return the lowest number of moves to acquire all keys. If it is impossible, return -1.
 pub fn shortest_path_all_keys(grid: Vec<String>)/* Strings can't be indexed in Rust, really Leetcode? */ -> i32 {
     let grid = Grid::new(grid);
-    
-    return match make_graph(&grid) {
-        Some(graph) => {
-            let target = (1 << grid.keys.len()) as u8 - 1;
-            let mut heap = BinaryHeap::new();
 
-            for (i, edge) in graph.start_edges.iter().enumerate() {
-                match edge {
-                    &Edge::Direct { cost, keys } if keys == 0 => {
-                        let state = GraphState::new(i as u8, cost, 1 << i as u8);
-                        heap.push(state)
-                    },
-                    _ => ()
-                }
-            }
-
-            while let Some(state) = heap.pop() {
-                if state.keys == target {
-                    return state.cost as i32;
-                }
-
-                for (i, edge) in graph.edges[state.current as usize].iter().enumerate() {
-                    match edge {
-                        &Edge::Direct { cost, keys } if i as u8 != state.current && (state.keys & keys) == keys => {
-                            let next = GraphState::new(i as u8, state.cost + cost, state.keys | (1 << i as u8));
-                            heap.push(next);
-                        },
-                        _ => ()
-                    }
-                }
-            }
-
-            -1
-        },
-        _ => -1
-    }
+    // IM DONE :(
+    shortest_path(&grid)
 }
 
 #[cfg(test)]
@@ -359,5 +376,75 @@ mod tests {
 
         let result = shortest_path_all_keys(grid.collect());
         assert_eq!(result, 10);
+    }
+
+    #[test]
+    fn test5() {
+        let grid = [
+            ".#........",
+            "......#..#",
+            ".#B#.#..#.",
+            "##...D.#..",
+            ".#.......#",
+            "##.....a..",
+            "...C.#...#",
+            "A...#.e.E#",
+            "c.@..#...d",
+            "#..#.#.b.#"
+        ].into_iter()
+            .map(String::from);
+
+        let result = shortest_path_all_keys(grid.collect());
+        assert_eq!(result, 21);
+    }
+
+    #[test]
+    fn test6() {
+        let grid = [
+            ".#......###..#.",
+            ".###C..#...b...",
+            "..#..#.........",
+            ".........#.....",
+            ".....@#.#......",
+            "#.##...#..##...",
+            "..d#...a...#...",
+            "..###..........",
+            "........#....#.",
+            "..#.#..#...c#.#",
+            "D#..........#.#",
+            "............#A.",
+            "..#..##...#....",
+            "#...#..#..B....",
+            ".....##.....#.."
+        ].into_iter()
+            .map(String::from);
+
+        let result = shortest_path_all_keys(grid.collect());
+        assert_eq!(result, 35);
+    }
+
+    #[test]
+    fn test7() {
+        let grid = [
+            "..Ff..#..e.#...",
+            ".....#.##...#..",
+            "....#.#...#....",
+            "##.......##...#",
+            "...@#.##....#..",
+            "#........b.....",
+            "..#...#.....##.",
+            ".#....#E...#...",
+            "......A.#D.#...",
+            "...#...#..#....",
+            "...a.#B#.......",
+            ".......c.....#.",
+            "....#...C#...#.",
+            "##.#.....d..#..",
+            ".#..#......#..."
+        ].into_iter()
+            .map(String::from);
+
+        let result = shortest_path_all_keys(grid.collect());
+        assert_eq!(result, 42);
     }
 }
