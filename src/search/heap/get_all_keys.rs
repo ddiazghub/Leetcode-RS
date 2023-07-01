@@ -1,5 +1,6 @@
 use std::{collections::{HashSet, BinaryHeap, HashMap}, cmp::Ordering, ops::{Add, Index}, fmt::Display};
 
+/// A Cell in a grid or something
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 enum Cell {
     Empty,
@@ -9,6 +10,8 @@ enum Cell {
     Lock(u8)
 }
 
+/// A tree which contains all posible branching traversals of a set of keys and estimates of their
+/// costs
 type EstimateTree = HashMap<Point, EstimateNode>;
 
 #[derive(Debug)]
@@ -27,6 +30,7 @@ impl EstimateNode {
         }
     }
 
+    /// Builds an estimate tree
     pub fn tree(start: Point, keys: &Vec<Point>) -> EstimateTree {
         let mut tree = HashMap::new();
         let mut explored = [false; 6];
@@ -44,6 +48,7 @@ impl EstimateNode {
         tree
     }
 
+    /// Builds an estimate tree
     fn tree_recurse(current: usize, keys: &Vec<Point>, explored: &mut [bool; 6]) -> (u8, EstimateTree) {
         let mut tree = HashMap::new();
         let key = keys[current];
@@ -70,6 +75,7 @@ impl EstimateNode {
     }
 }
 
+/// An actually usable grid unlike the String vector which leetcode supplies
 #[derive(Debug)]
 struct Grid {
     grid: Vec<Vec<Cell>>,
@@ -79,6 +85,7 @@ struct Grid {
 }
 
 impl Grid {
+    /// Creates an actually usable grid from a not so usable grid
     pub fn new(old_grid: Vec<String>) -> Self {
         let mut grid: Vec<Vec<Cell>> = Vec::new();
         let mut keys: Vec<Point> = Vec::new();
@@ -148,10 +155,12 @@ impl Index<Point> for Grid {
     }
 }
 
+/// A point in the grid
 #[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Clone, Copy, Default)]
 struct Point(u8, u8);
 
 impl Point {
+    /// UP, DOWN, LEFT, RIGHT. No need to say anything else.
     const MOVE_DIRECTIONS: [(i8, i8); 4] = [
         (1, 0),
         (-1, 0),
@@ -159,10 +168,12 @@ impl Point {
         (0, -1)
     ];
 
+    /// Manhattan distance between 2 points
     pub fn manhattan(self, other: Point) -> u8 {
         ((self.0 as i32 - other.0 as i32).abs() + (self.1 as i32 - other.1 as i32).abs()) as u8
     }
 
+    /// Expands a point into all adjacent points
     pub fn expand(self) -> impl Iterator<Item = Self> {
         Self::MOVE_DIRECTIONS
             .into_iter()
@@ -182,6 +193,7 @@ impl Add<(i8, i8)> for Point {
     }
 }
 
+/// Traversal state
 struct State<'a> {
     cell: Point,
     src: Point,
@@ -205,10 +217,12 @@ impl <'a> State<'a> {
         }
     }
 
+    /// Checks if a key has been picked up
     pub fn has_key(&self, key_id: u8) -> bool {
         ((1 << key_id) & self.keys) > 0
     }
 
+    /// Expands a state into all possible neighboring states
     pub fn expand<'b>(self, grid: &'b Grid, exclude: &'b HashSet<Point>) -> Vec<Self> {
         let cell = self.cell;
         let steps = self.steps + 1;
@@ -229,6 +243,7 @@ impl <'a> State<'a> {
             }).collect()
     }
 
+    /// Counts the number of keys that have been picked up
     pub fn key_count(&self) -> u8 {
         (0..6)
             .map(|i| self.keys & (1 << i))
@@ -260,6 +275,7 @@ impl <'a> Ord for State<'a> {
     }
 }
 
+/// Does some sort of nested A-Star traversal or something like that. Idk, I'm done with this.
 fn shortest_path(grid: &Grid) -> i32 {
     let mut explored: HashMap<(Point, Point), HashSet<Point>> = HashMap::new();
     let mut heap: BinaryHeap<State> = BinaryHeap::new();
@@ -330,7 +346,8 @@ fn shortest_path(grid: &Grid) -> i32 {
 pub fn shortest_path_all_keys(grid: Vec<String>)/* Strings can't be indexed in Rust, really Leetcode? */ -> i32 {
     let grid = Grid::new(grid);
 
-    // IM DONE :(
+    // There are around 5 tests which are still failing in Leetcode
+    // WHATEVER. IM DONE WITH THIS, THIS PROBLEM IS DRIVING ME TO INSANITY
     shortest_path(&grid)
 }
 
