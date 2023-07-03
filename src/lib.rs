@@ -1,8 +1,9 @@
 mod two_pointers;
 mod dynamic_programming;
-mod graph;
+mod basic_stuff;
 mod backtracking;
 mod bitmasking;
+mod search;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right
