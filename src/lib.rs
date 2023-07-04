@@ -1,8 +1,8 @@
 mod two_pointers;
 mod dynamic_programming;
-mod basic_stuff;
+mod string;
 mod backtracking;
-mod bitmasking;
+mod bit_manipulation;
 mod search;
 
 pub fn add(left: usize, right: usize) -> usize {
